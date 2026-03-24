@@ -2,8 +2,31 @@ import streamlit as st
 from pypdf import PdfReader
 import spacy
 
-# Load NLP model
-nlp = spacy.load("en_core_web_sm")
+# Load NLP model with fallback for missing model package
+def get_nlp_model():
+    model_name = "en_core_web_sm"
+    try:
+        return spacy.load(model_name)
+    except OSError:
+        try:
+            # Try import via package name if installed as dependency
+            import en_core_web_sm
+            return en_core_web_sm.load()
+        except (ImportError, OSError):
+            st.warning("SpaCy model not found. Attempting to download en_core_web_sm...")
+            import subprocess, sys
+            subprocess.run([sys.executable, "-m", "spacy", "download", model_name], check=False)
+            try:
+                return spacy.load(model_name)
+            except Exception as e:
+                st.error(
+                    "Failed to load spaCy model.\n"
+                    "Please run: pip install en-core-web-sm==3.7.1 && python -m spacy download en_core_web_sm"
+                )
+                st.warning("Continuing with fallback keyword matching (spaCy disabled).")
+                return None
+
+nlp = get_nlp_model()
 
 # Function to extract text
 def extract_text(file):
@@ -16,7 +39,7 @@ def extract_text(file):
 
 # Function to extract keywords
 def extract_keywords(text):
-    doc = nlp(text.lower())
+    text_lower = text.lower()
     keywords = set()
 
     # Known skills and technologies list
@@ -35,26 +58,33 @@ def extract_keywords(text):
         'testing', 'qa', 'ci/cd', 'jenkins', 'github actions', 'bash', 'powershell'
     }
 
-    # Extract noun phrases that contain skill-related words
-    for chunk in doc.noun_chunks:
-        chunk_text = chunk.text.strip().lower()
-        if 2 <= len(chunk_text) <= 60:  # keep reasonable phrase length
-            # Check if chunk contains any known skill words or is a known skill phrase
-            if any(skill in chunk_text for skill in skill_keywords) or chunk_text in skill_keywords:
-                keywords.add(chunk_text)
-            # Also store known root skill phrase if part of a longer chunk
-            for skill_phrase in skill_keywords:
-                if skill_phrase in chunk_text:
-                    keywords.add(skill_phrase)
+    if nlp is not None:
+        doc = nlp(text_lower)
 
-    # Add known single skill words that appear in the text
-    for token in doc:
-        token_lemma = token.lemma_.lower()
-        if token.is_alpha and len(token_lemma) > 2 and token.pos_ in ['NOUN', 'PROPN']:
-            if token_lemma in skill_keywords:
-                keywords.add(token_lemma)
+        # Extract noun phrases that contain skill-related words
+        for chunk in doc.noun_chunks:
+            chunk_text = chunk.text.strip().lower()
+            if 2 <= len(chunk_text) <= 60:  # keep reasonable phrase length
+                # Check if chunk contains any known skill words or is a known skill phrase
+                if any(skill in chunk_text for skill in skill_keywords) or chunk_text in skill_keywords:
+                    keywords.add(chunk_text)
+                # Also store known root skill phrase if part of a longer chunk
+                for skill_phrase in skill_keywords:
+                    if skill_phrase in chunk_text:
+                        keywords.add(skill_phrase)
 
-    # Determine a stable maximum output if needed (keep all for matching quality)
+        # Add known single skill words that appear in the text
+        for token in doc:
+            token_lemma = token.lemma_.lower()
+            if token.is_alpha and len(token_lemma) > 2 and token.pos_ in ['NOUN', 'PROPN']:
+                if token_lemma in skill_keywords:
+                    keywords.add(token_lemma)
+    else:
+        # spaCy unavailable, fallback to substring matching
+        for skill_phrase in skill_keywords:
+            if skill_phrase in text_lower:
+                keywords.add(skill_phrase)
+
     return sorted(keywords)
 
 
