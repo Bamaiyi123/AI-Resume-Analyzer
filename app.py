@@ -3,12 +3,7 @@ from pypdf import PdfReader
 import spacy
 
 # Load NLP model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    import spacy.cli
-    spacy.cli.download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_sm")
 
 # Function to extract text
 def extract_text(file):
