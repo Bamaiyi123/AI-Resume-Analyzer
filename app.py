@@ -9,21 +9,17 @@ def get_nlp_model():
         return spacy.load(model_name)
     except OSError:
         try:
-            # Try import via package name if installed as dependency
             import en_core_web_sm
             return en_core_web_sm.load()
         except (ImportError, OSError):
-            st.warning("SpaCy model not found. Attempting to download en_core_web_sm...")
+            # Keep all failures silent in streamlit UI for deployment reliability.
+            # Attempt to download the model once; if this fails, fallback gracefully.
             import subprocess, sys
             subprocess.run([sys.executable, "-m", "spacy", "download", model_name], check=False)
             try:
                 return spacy.load(model_name)
-            except Exception as e:
-                st.error(
-                    "Failed to load spaCy model.\n"
-                    "Please run: pip install en-core-web-sm==3.7.1 && python -m spacy download en_core_web_sm"
-                )
-                st.warning("Continuing with fallback keyword matching (spaCy disabled).")
+            except Exception:
+                # Fallback to keyword matching only (no spaCy) without additional UI error messages
                 return None
 
 nlp = get_nlp_model()
